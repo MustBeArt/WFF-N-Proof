@@ -3,6 +3,7 @@
 *       W F F T E S T          *
 *                              *
 *  1/19/85 Paul T. Williamson  *
+*  V0.8 2019-03-06 PTW         *
 *                              *
 ********************************
 
@@ -45,7 +46,7 @@
 *  its initial character position
 *  (which is its current postion) and its
 *  final character position, which is
-*  found in PWFF.  When this scam
+*  found in PWFF.  When this scan
 *  reaches the left edge of the string,
 *  a WFF has been reduced to a
 *  single WFF-token.  An ill-formed formula
@@ -65,13 +66,13 @@ TLATE          INY
                STA   PWFF,Y     ;init PWFF pointer string
                LDA   (WFF),Y    ;character level tokenize
                BEQ   PARSE      ;  catch end of string null
-               CMP   #$C3
+               CMP   #$C3       ;'C' in PETSCII
                BEQ   CONNEC     ;it's a connective
-               CMP   #$C1
+               CMP   #$C1       ;'A'
                BEQ   CONNEC
-               CMP   #$CB
+               CMP   #$CB       ;'K'
                BEQ   CONNEC
-               CMP   #$C5
+               CMP   #$C5       ;'E'
                BEQ   CONNEC
                CMP   #$CE       ;it is a unary N?
                BEQ   UNARY
@@ -85,7 +86,7 @@ TLATE          INY
                BNE   BADCHAR
 SIMPLE         LDA   #0         ;0 is the token for simple WFFs
                STA   QWFF,Y     ;put it in the token array
-               BEQ   TLATE      ; ALWAYS
+               BEQ   TLATE      ;ALWAYS
 
 UNARY          LDA   #1         ;1 is the token for N
                STA   QWFF,Y
@@ -102,7 +103,7 @@ BADCHAR        SEC              ;return bad status
 *      MAIN SCAN               *
 ********************************
 
-PARSE          DEY
+PARSE          DEY              ;point at the last character
                STY   LENGTH
                STY   QLEN
 NCHAR          LDA   QWFF,Y     ;get a token from QWFF
@@ -147,6 +148,8 @@ UFND           STY   CPTR       ;save its location
                JSR   SAVETOK    ;make entry in tokens table
                TXA
 NSQEZ          STA   QWFF-1,Y   ;replace with token/next
+               LDA   PWFF,Y     ;update pointer array
+               STA   PWFF-1,Y
                CPY   QLEN       ;at end of QWFF?
                BEQ   DONENSQ    ;  yes, done squeezing
                INY
