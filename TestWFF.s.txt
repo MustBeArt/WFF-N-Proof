@@ -1,0 +1,201 @@
+********************************
+*                              *
+*       W F F T E S T          *
+*                              *
+*  1/19/85 Paul T. Williamson  *
+*                              *
+********************************
+
+*  This routine accepts a PETSCII
+*  character string and examines it
+*  according to the rules of WFF'N PROOF.
+*  It determines whether or not the
+*  string is a WFF.
+*  It constructs a structure table that
+*  allows an underline-type proof
+*  to be printed without reexamination
+*  of the WFF.
+
+*  The following tokens are used:
+*         0 = any of p, q, r, s, (the primitive WFFs)
+*         1 = N, (the only unary operator)
+*         2 = any of C, A, K, E, (prefix binary operators)
+*         3 ... $FF = compound WFFs found in the string.
+
+*  At entry, the string is pointed to
+*  by WFF and terminated by a null.
+*  It is first tokenized on a character level
+*  into QWFF, resulting in a string
+*  of 0's, 1's,  and 2's.
+*  Simultaneously, a corresponding
+*  string, PWFF, is initialized with
+*  0,1,2,3,4,5,....  PWFF will be
+*  manipulated together with QWFF
+*  so as to keep track of the initial
+*  character positions of the WFFs.
+
+*  Only a single scan is necessary to
+*  analyze any WFF.  The scan proceeds
+*  from right to left.  When a 1 or 2
+*  (unary or binary operator token)
+*  is encountered, it and the following
+*  1 or 2 (respectively) tokens are
+*  replaced by a new token.  This token
+*  is noted in the TOKENS table by
+*  its initial character position
+*  (which is its current postion) and its
+*  final character position, which is
+*  found in PWFF.  When this scam
+*  reaches the left edge of the string,
+*  a WFF has been reduced to a
+*  single WFF-token.  An ill-formed formula
+*  will still have multiple tokens.
+
+WFF            EQU   $FB        ;normally free zp space
+NUMTOK         EQU   $FD
+
+
+               ORG   $6000      ;WHY NOT?
+
+TESTWFF        LDY   #$FF       ;start off index
+               LDA   #2         ;initialize NUMTOK
+               STA   NUMTOK
+TLATE          INY
+               TYA
+               STA   PWFF,Y     ;init PWFF pointer string
+               LDA   (WFF),Y    ;character level tokenize
+               BEQ   PARSE      ;  catch end of string null
+               CMP   #$C3
+               BEQ   CONNEC     ;it's a connective
+               CMP   #$C1
+               BEQ   CONNEC
+               CMP   #$CB
+               BEQ   CONNEC
+               CMP   #$C5
+               BEQ   CONNEC
+               CMP   #$CE       ;it is a unary N?
+               BEQ   UNARY
+               CMP   #'p        ;is it a primitive WFF?
+               BEQ   SIMPLE
+               CMP   #'q
+               BEQ   SIMPLE
+               CMP   #'r
+               BEQ   SIMPLE
+               CMP   #'s
+               BNE   BADCHAR
+SIMPLE         LDA   #0         ;0 is the token for simple WFFs
+               STA   QWFF,Y     ;put it in the token array
+               BEQ   TLATE      ; ALWAYS
+
+UNARY          LDA   #1         ;1 is the token for N
+               STA   QWFF,Y
+               BNE   TLATE      ;ALWAYS
+
+CONNEC         LDA   #2         ;2 is the token for connectives
+               STA   QWFF,Y
+               BNE   TLATE      ;ALWAYS
+
+BADCHAR        SEC              ;return bad status
+               RTS
+
+********************************
+*      MAIN SCAN               *
+********************************
+
+PARSE          DEY
+               STY   LENGTH
+               STY   QLEN
+               INY
+NCHAR          LDA   QWFF,Y     ;get a token from QWFF
+               CMP   #1
+               BMI   NEXT       ;do nothing to simple WFF
+               BEQ   UFND       ;found a unary N
+               CMP   #2         ;is it a connective?
+               BNE   NEXT       ;  no, must be a compound WFF
+                                ;here we have a connective
+               STY   CPTR       ;save its location
+               JSR   FINDWFF    ;find two WFFs after connective
+               JSR   FINDWFF    ;FINDWFF skip returns on failure
+               JSR   SAVETOK    ;make entry in token table
+
+               TXA
+CSQEZ          STA   QWFF-2,Y   ;replace char with token/next
+               LDA   PWFF,Y     ;update pointer array
+               STA   PWFF-2,Y
+               CPY   QLEN       ;are we at end of QWFF?
+               BEQ   DONECSQ    ;  yes, done squeezing
+               INY
+               LDA   QWFF,Y     ;move QWFF up
+               SEC
+               BCS   CSQEZ      ;ALWAYS
+
+DONECSQ        DEC   QLEN       ;adjust QLEN
+               DEC   QLEN
+               LDY   CPTR       ;where we were parsing
+NEXT           DEY              ;next;  are we done?
+               BPL   NCHAR      ;  no, more scan..
+
+               LDA   QLEN       ;any spare WFFs lying around?
+               BNE   BADWFF     ;  yes, not acceptable.
+GOODWFF        CLC              ;GOOD WFF!
+               RTS
+
+********************************
+*   UNARY HANDLER              *
+********************************
+UFND           STY   CPTR       ;save its location
+               JSR   FINDWFF    ;find one WFF after it
+               JSR   SAVETOK    ;make entry in tokens table
+               TXA
+NSQEZ          STA   QWFF-1,Y   ;replace with token/next
+               CPY   QLEN       ;at end of QWFF?
+               BEQ   DONENSQ    ;  yes, done squeezing
+               INY
+               LDA   QWFF,Y     ;get next token
+               SEC
+               BCS   NSQEZ      ;ALWAYS
+
+DONENSQ        DEC   QLEN       ;adjust QLEN
+               LDY   CPTR       ;where we were
+               DEY              ;next;  are we done?
+               BPL   NCHAR      ;  no, back for more
+               BMI   GOODWFF    ;  yes, done
+
+********************************
+*  MAKE ENTRY IN TOKENS TABLE  *
+********************************
+
+SAVETOK        INC   NUMTOK     ;get new token number
+               LDX   NUMTOK
+               LDA   CPTR       ;make entry in token table
+               STA   TOKENS1-3,X
+               LDA   PWFF,Y     ;last character offset
+               STA   TOKENS2-3,X
+               RTS
+
+********************************
+*       FINDWFF                *
+********************************
+
+FINDWFF        INY              ;this is supposed to find a WFF
+               CPY   QLEN       ;are we past end of buffer?
+               BEQ   FNDOK      ;it's ok to be at the end
+               BPL   NOWFF      ;  yes, FINDWFF failed.
+FNDOK          RTS              ;RTS indicates success
+
+NOWFF          PLA              ;failure: skip return
+               PLA
+BADWFF         SEC              ;flag failure
+               RTS              ;exit with failure to caller
+
+********************************
+
+               DUM   *
+QWFF           DS    $0100      ;tokenized WFF string
+PWFF           DS    $0100      ;pointers to last characters
+TOKENS1        DS    $0100      ;table of tokens; first chars
+TOKENS2        DS    $0100      ;table of tokens; second chars
+LENGTH         DS    1          ;length of original string
+QLEN           DS    1          ;current length of QWFF
+CPTR           DS    1          ;ptr to connective/unary origin
+               DEND
