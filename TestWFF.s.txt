@@ -105,7 +105,6 @@ BADCHAR        SEC              ;return bad status
 PARSE          DEY
                STY   LENGTH
                STY   QLEN
-               INY
 NCHAR          LDA   QWFF,Y     ;get a token from QWFF
                CMP   #1
                BMI   NEXT       ;do nothing to simple WFF
